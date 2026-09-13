@@ -6,7 +6,7 @@ const SIG_QUERY = 'https://sigonline.cm-pvarzim.pt/arcgis/rest/services/Inter_In
 const here = dirname(fileURLToPath(import.meta.url));
 const output = resolve(here, '../data/hydrants-seed.json');
 
-// Campos cuja presença confirma a versão de esquema usada pela PWA v2.2.
+// Campos cuja presença confirma a versão de esquema usada pela PWA v2.3.
 // EstadoOperacional NÃO é inferido a partir de CicloVida, EstadoConservacao ou Enabled.
 const REQUIRED_SIG_FIELDS = [
   'IDEntidade',

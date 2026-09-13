@@ -336,7 +336,7 @@ function dataRowsForPoint(p, includeCoords = true) {
     ['Tipo', p.TipoLabel],
     ['Estado operacional', p.EstadoLabel],
     ['Ciclo de vida', p.CicloVidaLabel],
-    ['Estado de conservação', p.EstadoConservacaoLabel],
+    ['Conservação', p.EstadoConservacaoLabel],
     ['Freguesia', p.Freguesia],
     ['Arruamento', p.Arruamento],
     ['Localização', p.Localizacao],
@@ -352,14 +352,14 @@ function dataRowsForPoint(p, includeCoords = true) {
     ['Entrada em serviço', hasValue(p.DataEntradaServico) ? formatSigDate(p.DataEntradaServico) : ''],
     ['Descrição', p.Descricao],
     ['Observações', p.Observacoes],
-    ['Última atualização do registo SIG', p.DataActualizacaoLabel]
+    ['Atualizado em', p.DataActualizacaoLabel]
   ];
   if (includeCoords) rows.push(['Coordenadas', `${p.latitude.toFixed(7)}, ${p.longitude.toFixed(7)}`]);
   const alwaysVisible = new Set([
     'Estado operacional',
     'Ciclo de vida',
-    'Estado de conservação',
-    'Última atualização do registo SIG'
+    'Conservação',
+    'Atualizado em'
   ]);
   return rows.filter(([label, value]) => alwaysVisible.has(label) || hasValue(value));
 }
@@ -393,8 +393,21 @@ function initMap() {
     minZoom: 10,
     maxZoom: 20,
     dragging: true,
-    tap: false
+    doubleClickZoom: true,
+    scrollWheelZoom: true,
+    touchZoom: true,
+    boxZoom: true,
+    keyboard: true
   }).setView(DEFAULT_CENTER, 13);
+
+  // Reforço explícito das interações: mantém o comportamento normal de um mapa
+  // navegável mesmo se o browser/dispositivo alterar defaults do Leaflet.
+  state.map.dragging?.enable();
+  state.map.doubleClickZoom?.enable();
+  state.map.scrollWheelZoom?.enable();
+  state.map.touchZoom?.enable();
+  state.map.boxZoom?.enable();
+  state.map.keyboard?.enable();
 
   L.control.zoom({ position: 'topright' }).addTo(state.map);
 
@@ -404,12 +417,8 @@ function initMap() {
   }).addTo(state.map);
 
   state.markerLayer = L.layerGroup().addTo(state.map);
-  state.map.on('click', event => {
-    const { lat, lng } = event.latlng || {};
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
-    setSearchPosition(lat, lng, `Ponto no mapa (${lat.toFixed(5)}, ${lng.toFixed(5)})`);
-    setSearchStatus('Ponto de ocorrência marcado no mapa. O hidrante mais próximo foi recalculado.');
-  });
+  // Não usamos o clique simples do mapa para criar uma ocorrência: isso interferia
+  // com pan e duplo clique. O ponto de ocorrência continua a ser definido pela busca.
   state.map.on('popupopen', event => {
     const btn = event.popup.getElement()?.querySelector('[data-copy-coords]');
     if (btn) btn.addEventListener('click', () => {

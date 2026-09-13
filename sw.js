@@ -1,4 +1,4 @@
-const VERSION = 'hidrantes-povoa-v2.2.0';
+const VERSION = 'hidrantes-povoa-v2.3.0';
 const APP_CACHE = `${VERSION}-app`;
 const VENDOR_CACHE = `${VERSION}-vendor`;
 const APP_ASSETS = [
@@ -12,6 +12,8 @@ const APP_ASSETS = [
   './assets/hydrant_app_64.png',
   './assets/hydrant_app_192.png',
   './assets/hydrant_app_512.png',
+  './assets/favicon_hydrant_32.png',
+  './assets/favicon_hydrant_64.png',
   './data/hydrants-seed.json'
 ];
 
