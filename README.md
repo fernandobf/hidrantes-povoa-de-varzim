@@ -1,4 +1,4 @@
-# Hidrantes — Póvoa de Varzim · PWA v2.6
+# Hidrantes — Póvoa de Varzim · PWA v2.7
 
 Versão preparada para publicar diretamente em:
 
@@ -143,3 +143,12 @@ O mapa é uma ferramenta de referência e pré-planeamento. Os dados SIG podem e
 - `MarcoIncendio` usa o hidrante vermelho clássico; `BocaIncendio` usa um ícone próprio de boca/conexão de incêndio, mantendo a mesma paleta e estilo.
 - O popup e o cartão do hidrante mais próximo mostram o ícone correspondente ao tipo.
 - O ícone instalado da PWA passa a ser um símbolo vermelho de download/instalação com seta branca. A identidade visual do site e o favicon continuam como hidrante.
+
+
+## v2.7 — correção definitiva do pan/zoom do mapa
+
+A causa do problema foi identificada nas regras de hit-testing introduzidas nas versões anteriores: `leaflet-map-pane` e `leaflet-tile-pane` estavam com `pointer-events: none`. Isso impedia a superfície normal do mapa de iniciar corretamente a interação, enquanto os marcadores continuavam interativos — exatamente o sintoma “só arrasta quando começo sobre um hidrante”.
+
+A v2.7 remove essa estratégia e restaura o modelo de eventos nativo do Leaflet. `mapPane`, `tilePane` e os tiles participam novamente do hit-testing; os eventos propagam ao contentor do mapa; apenas o pane decorativo do halo continua sem eventos. Também são reativados explicitamente `dragging`, `doubleClickZoom`, `scrollWheelZoom`, `touchZoom`, `boxZoom` e teclado.
+
+Comportamento esperado no desktop: arrastar a partir de qualquer rua/edifício/área do mapa move o mapa; duplo clique faz zoom; roda faz zoom; marcadores e popups continuam clicáveis.

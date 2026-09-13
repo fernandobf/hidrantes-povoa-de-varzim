@@ -1,11 +1,13 @@
-const VERSION = 'hidrantes-povoa-v2.6.0';
+const VERSION = 'hidrantes-povoa-v2.7.0';
 const APP_CACHE = `${VERSION}-app`;
 const VENDOR_CACHE = `${VERSION}-vendor`;
 const APP_ASSETS = [
   './',
   './index.html',
-  './styles.v2.6.css?v=2.6.0',
-  './app.v2.6.js?v=2.6.0',
+  './styles.v2.7.css?v=2.7.0',
+  './app.v2.7.js?v=2.7.0',
+  './styles.css',
+  './app.js',
   './manifest.webmanifest',
   './assets/hydrant_map.svg',
   './assets/hydrant_map_52x80.png',
