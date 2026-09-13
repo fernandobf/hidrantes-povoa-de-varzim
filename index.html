@@ -12,7 +12,7 @@
   <link rel="icon" type="image/png" sizes="64x64" href="./assets/favicon_hydrant_64.png">
   <link rel="apple-touch-icon" href="./assets/hydrant_app_192.png">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-  <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./styles.v2.5.css?v=2.5.0">
 </head>
 <body>
   <div id="app">
@@ -43,13 +43,15 @@
       </div>
 
       <section id="toolbar" class="toolbar" aria-label="Pesquisa e filtros">
-        <button id="toolbarToggle" class="toolbar-toggle" type="button" aria-expanded="true" aria-controls="toolbarBody">
-          <span class="toolbar-toggle-copy">
+        <div class="toolbar-head">
+          <div class="toolbar-title">
             <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
             <span>Pesquisa e filtros</span>
-          </span>
-          <svg class="ui-icon toolbar-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
-        </button>
+          </div>
+          <button id="toolbarToggle" class="toolbar-toggle" type="button" aria-expanded="true" aria-controls="toolbarBody" title="Recolher pesquisa e filtros" aria-label="Recolher pesquisa e filtros">
+            <svg class="ui-icon toolbar-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+        </div>
 
         <div id="toolbarBody" class="toolbar-body">
           <form id="searchForm" class="search-row" role="search">
@@ -159,6 +161,6 @@
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="./app.js" defer></script>
+  <script src="./app.v2.5.js?v=2.5.0" defer></script>
 </body>
 </html>

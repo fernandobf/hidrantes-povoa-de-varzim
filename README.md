@@ -1,4 +1,4 @@
-# Hidrantes — Póvoa de Varzim · PWA v2.4
+# Hidrantes — Póvoa de Varzim · PWA v2.5
 
 Versão preparada para publicar diretamente em:
 
@@ -121,3 +121,14 @@ O mapa é uma ferramenta de referência e pré-planeamento. Os dados SIG podem e
 - Pan com rato usa cursor `grab/grabbing`; duplo clique, roda do rato, pinch zoom e teclado permanecem explicitamente ativos.
 - Os marcadores usam um PNG leve e reutilizado. O halo do hidrante mais próximo/selecionado passou para `L.circleMarker` em Canvas, evitando reconstruir centenas de ícones e reduzindo trabalho de DOM durante pan/zoom.
 - Tile layer configurada para atualizar quando o movimento termina (`updateWhenIdle`) e não redesenhar continuamente durante zoom, priorizando fluidez em telemóveis.
+
+
+## v2.5 — correção estrutural de UI e interação do mapa
+
+- O cabeçalho do painel de pesquisa deixou de ser um botão inteiro. Agora tem título fixo e um botão compacto de chevron à direita para recolher/expandir.
+- `app.js` e `styles.css` passaram a ter nomes versionados (`app.v2.5.js` e `styles.v2.5.css`). Isto impede que um `index.html` novo seja combinado com JS/CSS antigos guardados pelo Service Worker ou cache do navegador.
+- O mapa voltou a usar os handlers nativos do Leaflet, sem hacks de `pointer-events`, `dragstart` ou gestos que pudessem bloquear o rato/toque.
+- Mantidos: arrastar com rato, roda do rato, duplo clique, pinça, box zoom e teclado.
+- O `#map` passou a ser uma área absoluta própria abaixo da barra superior, evitando interferência de padding/layout com o hit area do mapa.
+- Em mobile, `touch-action: none` fica apenas no mapa; a viewport impede que a pinça amplie a página inteira.
+- O Service Worker v2.5 faz navegação network-first com `no-store` e elimina caches antigos da aplicação ao ativar.
