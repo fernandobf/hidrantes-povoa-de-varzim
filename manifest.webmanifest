@@ -1,0 +1,26 @@
+{
+  "name": "Hidrantes — Póvoa de Varzim",
+  "short_name": "Hidrantes Póvoa",
+  "description": "Mapa de hidrantes da Póvoa de Varzim com dados do SIG municipal e localização GPS.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#eef4f8",
+  "theme_color": "#0d3d66",
+  "lang": "pt-PT",
+  "icons": [
+    {
+      "src": "./assets/hydrant_drop_192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./assets/hydrant_drop_512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0d3d66">
+  <meta name="description" content="Mapa PWA de hidrantes da Póvoa de Varzim com dados do SIG municipal, GPS e hidrante mais próximo.">
+  <title>Hidrantes — Póvoa de Varzim</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./assets/hydrant_drop.png" type="image/png">
+  <link rel="apple-touch-icon" href="./assets/hydrant_drop_192.png">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div class="brand">
+        <img src="./assets/hydrant_drop.png" alt="" class="brand-icon">
+        <div>
+          <div class="brand-title">Hidrantes</div>
+          <div class="brand-subtitle">Póvoa de Varzim</div>
+        </div>
+      </div>
+
+      <div class="top-actions">
+        <button id="installBtn" class="icon-btn" type="button" title="Instalar aplicação" hidden aria-label="Instalar aplicação">＋</button>
+        <button id="refreshBtn" class="icon-btn" type="button" title="Atualizar dados do SIG" aria-label="Atualizar dados do SIG">↻</button>
+      </div>
+    </header>
+
+    <main class="map-shell">
+      <div id="map" aria-label="Mapa dos hidrantes"></div>
+      <div id="mapFallback" class="map-fallback" hidden>
+        <strong>Mapa indisponível</strong>
+        <span>Os dados dos hidrantes continuam disponíveis. Confirma a ligação à Internet e recarrega a página.</span>
+      </div>
+
+      <section class="toolbar" aria-label="Pesquisa e filtros">
+        <div class="search-row">
+          <input id="searchInput" type="search" placeholder="Rua, freguesia ou ID…" autocomplete="off">
+          <button id="clearSearchBtn" type="button" class="mini-btn" title="Limpar pesquisa" aria-label="Limpar pesquisa">×</button>
+        </div>
+        <div class="filter-row">
+          <select id="typeFilter" aria-label="Filtrar por tipo">
+            <option value="all">Todos os tipos</option>
+            <option value="MarcoIncendio">Marcos</option>
+            <option value="BocaIncendio">Bocas</option>
+          </select>
+          <select id="statusFilter" aria-label="Filtrar por estado">
+            <option value="all">Todos os estados</option>
+            <option value="Operacional">Operacional</option>
+            <option value="NaoOperacional">Não operacional</option>
+            <option value="unknown">Estado não informado</option>
+          </select>
+        </div>
+        <div class="toolbar-meta">
+          <span id="visibleCount">—</span>
+          <span aria-hidden="true">•</span>
+          <span id="sourceBadge">A carregar…</span>
+        </div>
+      </section>
+
+      <div class="map-buttons" aria-label="Controlos rápidos">
+        <button id="locateBtn" type="button" class="map-btn primary-map-btn" title="Ativar GPS" aria-label="Ativar GPS">◎</button>
+        <button id="fitBtn" type="button" class="map-btn" title="Mostrar todos os hidrantes" aria-label="Mostrar todos os hidrantes">⌗</button>
+        <button id="offlineBtn" type="button" class="map-btn" title="Informação sobre modo offline" aria-label="Informação sobre modo offline">⇩</button>
+      </div>
+
+      <div id="networkBanner" class="network-banner" hidden>
+        Sem ligação: hidrantes guardados e GPS continuam disponíveis; o fundo do mapa pode ficar indisponível nesta v1.
+      </div>
+
+      <section id="nearestCard" class="nearest-card" aria-live="polite">
+        <button id="nearestToggle" class="nearest-summary" type="button" aria-expanded="false" aria-controls="nearestDetails">
+          <span class="nearest-icon-wrap"><img src="./assets/hydrant_drop.png" alt="" class="nearest-icon"></span>
+          <span class="nearest-copy">
+            <span class="nearest-label">Hidrante mais próximo</span>
+            <strong id="nearestHeadline">Ative o GPS para calcular</strong>
+            <span id="nearestSubline" class="nearest-subline">A sua posição é usada apenas no dispositivo.</span>
+          </span>
+          <span id="nearestChevron" class="chevron" aria-hidden="true">⌃</span>
+        </button>
+        <div id="nearestDetails" class="nearest-details" hidden>
+          <dl id="nearestData" class="detail-grid"></dl>
+          <div class="nearest-actions">
+            <button id="focusNearestBtn" type="button">Ver no mapa</button>
+            <button id="navigateNearestBtn" type="button" class="accent">Navegar</button>
+            <button id="copyNearestBtn" type="button">Copiar coordenadas</button>
+          </div>
+          <p class="microcopy">A distância apresentada é em linha reta a partir do GPS. “Navegar” abre o Google Maps para obter percurso e tempo estimado.</p>
+        </div>
+      </section>
+    </main>
+
+    <dialog id="infoDialog" class="info-dialog">
+      <form method="dialog">
+        <div class="dialog-head">
+          <strong>Uso offline nesta versão</strong>
+          <button value="close" class="dialog-close" aria-label="Fechar">×</button>
+        </div>
+        <p><strong>Já fica guardado:</strong> a aplicação e a última lista de hidrantes descarregada do SIG. O GPS continua a funcionar sem dados móveis.</p>
+        <p><strong>Ainda não fica garantido:</strong> o fundo cartográfico completo da Póvoa de Varzim. Nesta v1 não fazemos download massivo de tiles públicos.</p>
+        <p>A próxima evolução pode usar um pacote cartográfico próprio da Póvoa de Varzim (PMTiles), permitindo mapa base realmente offline.</p>
+        <div class="dialog-actions">
+          <button id="prepareOfflineBtn" value="noop" type="button" class="accent">Guardar dados agora</button>
+          <button value="close">Fechar</button>
+        </div>
+      </form>
+    </dialog>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+    <footer class="source-footer">
+      Fonte dos hidrantes: SIG da Câmara Municipal da Póvoa de Varzim. Os dados podem estar incompletos ou desatualizados e não garantem a operacionalidade/pressão no local.
+    </footer>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="./app.js" defer></script>
+</body>
+</html>
