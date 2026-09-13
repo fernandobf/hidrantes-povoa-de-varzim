@@ -14,6 +14,9 @@ const state = {
   filtered: [],
   map: null,
   markerLayer: null,
+  highlightLayer: null,
+  nearestHalo: null,
+  selectedHalo: null,
   markers: new Map(),
   markersVisible: true,
   userMarker: null,
@@ -38,6 +41,9 @@ const els = {
   mapFallback: $('mapFallback'),
   installBtn: $('installBtn'),
   refreshBtn: $('refreshBtn'),
+  toolbar: $('toolbar'),
+  toolbarToggle: $('toolbarToggle'),
+  toolbarBody: $('toolbarBody'),
   searchForm: $('searchForm'),
   searchInput: $('searchInput'),
   searchBtn: $('searchBtn'),
@@ -314,20 +320,66 @@ function setLocateState(mode) {
 
 function createMarkerIcon(p) {
   if (!window.L) return null;
-  const id = getPointId(p);
-  const classes = ['hydrant-marker'];
-  if (state.nearest && getPointId(state.nearest.point) === id) classes.push('nearest');
-  if (state.nearestExpanded && state.nearest && getPointId(state.nearest.point) === id) classes.push('nearest-active');
-  if (state.selectedId === id) classes.push('selected');
+  const classes = ['hydrant-marker-img'];
   if (p.EstadoKey === 'non_operational') classes.push('non-operational');
-
-  return L.divIcon({
-    className: 'hydrant-div-icon',
-    html: `<div class="${classes.join(' ')}"><img src="./assets/hydrant_map.svg" alt=""></div>`,
-    iconSize: [30, 44],
-    iconAnchor: [15, 40],
-    popupAnchor: [0, -36]
+  return L.icon({
+    iconUrl: './assets/hydrant_map_52x80.png',
+    iconSize: [26, 40],
+    iconAnchor: [13, 37],
+    popupAnchor: [0, -34],
+    className: classes.join(' ')
   });
+}
+
+function ensureHighlightPane() {
+  if (!state.map || state.map.getPane('highlightPane')) return;
+  const pane = state.map.createPane('highlightPane');
+  pane.classList.add('leaflet-highlight-pane');
+  pane.style.zIndex = '590';
+}
+
+function removeHalo(key) {
+  const layer = state[key];
+  if (layer && state.highlightLayer) state.highlightLayer.removeLayer(layer);
+  state[key] = null;
+}
+
+function updateHighlightLayers() {
+  if (!state.map || !state.highlightLayer || !window.L) return;
+  removeHalo('nearestHalo');
+  removeHalo('selectedHalo');
+
+  if (state.nearest?.point) {
+    const p = state.nearest.point;
+    state.nearestHalo = L.circleMarker([p.latitude, p.longitude], {
+      pane: 'highlightPane',
+      renderer: state.highlightRenderer,
+      radius: state.nearestExpanded ? 20 : 17,
+      color: '#ffb000',
+      weight: state.nearestExpanded ? 4 : 3,
+      opacity: .95,
+      fillColor: '#ffb000',
+      fillOpacity: state.nearestExpanded ? .10 : .055,
+      interactive: false
+    }).addTo(state.highlightLayer);
+  }
+
+  const nearestId = state.nearest?.point ? getPointId(state.nearest.point) : null;
+  if (state.selectedId && state.selectedId !== nearestId) {
+    const p = state.points.find(x => getPointId(x) === state.selectedId);
+    if (p) {
+      state.selectedHalo = L.circleMarker([p.latitude, p.longitude], {
+        pane: 'highlightPane',
+        renderer: state.highlightRenderer,
+        radius: 16,
+        color: '#6c4de6',
+        weight: 3,
+        opacity: .9,
+        fillOpacity: 0,
+        interactive: false
+      }).addTo(state.highlightLayer);
+    }
+  }
 }
 
 function dataRowsForPoint(p, includeCoords = true) {
@@ -397,7 +449,11 @@ function initMap() {
     scrollWheelZoom: true,
     touchZoom: true,
     boxZoom: true,
-    keyboard: true
+    keyboard: true,
+    tap: false,
+    bounceAtZoomLimits: false,
+    wheelDebounceTime: 25,
+    wheelPxPerZoomLevel: 60
   }).setView(DEFAULT_CENTER, 13);
 
   // Reforço explícito das interações: mantém o comportamento normal de um mapa
@@ -409,13 +465,29 @@ function initMap() {
   state.map.boxZoom?.enable();
   state.map.keyboard?.enable();
 
+  const mapContainer = state.map.getContainer();
+  mapContainer.style.touchAction = 'none';
+  mapContainer.setAttribute('draggable', 'false');
+  // Impede o browser de iniciar arrasto nativo dos tiles/imagens e, em Safari,
+  // de ampliar a página inteira durante a pinça. O gesto continua disponível ao Leaflet.
+  mapContainer.addEventListener('dragstart', event => event.preventDefault());
+  for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
+    mapContainer.addEventListener(type, event => event.preventDefault(), { passive: false });
+  }
+
   L.control.zoom({ position: 'topright' }).addTo(state.map);
 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
-    attribution: '&copy; OpenStreetMap contributors'
+    attribution: '&copy; OpenStreetMap contributors',
+    updateWhenIdle: true,
+    updateWhenZooming: false,
+    keepBuffer: 3
   }).addTo(state.map);
 
+  ensureHighlightPane();
+  state.highlightRenderer = L.canvas({ pane: 'highlightPane', padding: .35 });
+  state.highlightLayer = L.layerGroup().addTo(state.map);
   state.markerLayer = L.layerGroup().addTo(state.map);
   // Não usamos o clique simples do mapa para criar uma ocorrência: isso interferia
   // com pan e duplo clique. O ponto de ocorrência continua a ser definido pela busca.
@@ -457,12 +529,13 @@ function renderMarkers({ fit = false } = {}) {
       marker.bindPopup(() => popupHtml(p));
       marker.on('click', () => {
         state.selectedId = id;
-        refreshMarkerIcons();
+        updateHighlightLayers();
       });
       marker.addTo(state.markerLayer);
       state.markers.set(id, marker);
     } else {
       marker.setIcon(createMarkerIcon(p));
+      marker.bindPopup(() => popupHtml(p));
     }
   }
 
@@ -472,10 +545,9 @@ function renderMarkers({ fit = false } = {}) {
 }
 
 function refreshMarkerIcons() {
-  for (const p of state.filtered) {
-    const marker = state.markers.get(getPointId(p));
-    if (marker) marker.setIcon(createMarkerIcon(p));
-  }
+  // Os halos são Canvas e não obrigam a reconstruir centenas de ícones DOM.
+  // Isto torna pan/zoom sensivelmente mais leve em telemóveis.
+  updateHighlightLayers();
 }
 
 function fitPoints(points = state.filtered) {
@@ -489,6 +561,10 @@ function setMarkersVisibility(visible, { silent = false } = {}) {
   if (state.map && state.markerLayer) {
     if (visible && !state.map.hasLayer(state.markerLayer)) state.markerLayer.addTo(state.map);
     if (!visible && state.map.hasLayer(state.markerLayer)) state.map.removeLayer(state.markerLayer);
+    if (state.highlightLayer) {
+      if (visible && !state.map.hasLayer(state.highlightLayer)) state.highlightLayer.addTo(state.map);
+      if (!visible && state.map.hasLayer(state.highlightLayer)) state.map.removeLayer(state.highlightLayer);
+    }
   }
   els.visibilityBtn.classList.toggle('markers-hidden', !visible);
   els.visibilityBtn.setAttribute('aria-pressed', String(visible));
@@ -1027,7 +1103,18 @@ function setupInstallPrompt() {
   });
 }
 
+function setToolbarCollapsed(collapsed) {
+  if (!els.toolbar || !els.toolbarToggle || !els.toolbarBody) return;
+  els.toolbar.classList.toggle('collapsed', collapsed);
+  els.toolbarToggle.setAttribute('aria-expanded', String(!collapsed));
+  els.toolbarToggle.title = collapsed ? 'Expandir pesquisa e filtros' : 'Recolher pesquisa e filtros';
+  els.toolbarToggle.setAttribute('aria-label', els.toolbarToggle.title);
+  try { localStorage.setItem('hidrantes-toolbar-collapsed', collapsed ? '1' : '0'); } catch (_) {}
+  requestAnimationFrame(() => state.map?.invalidateSize({ pan: false }));
+}
+
 function bindUi() {
+  els.toolbarToggle?.addEventListener('click', () => setToolbarCollapsed(!els.toolbar.classList.contains('collapsed')));
   els.searchForm.addEventListener('submit', event => {
     event.preventDefault();
     runSearch();
@@ -1101,10 +1188,12 @@ async function registerServiceWorker() {
 
 async function init() {
   bindUi();
+  try { setToolbarCollapsed(localStorage.getItem('hidrantes-toolbar-collapsed') === '1'); } catch (_) {}
   setupInstallPrompt();
   updateOnlineUi();
   setLocateState('ready');
   initMap();
+  window.addEventListener('resize', () => state.map?.invalidateSize({ pan: false }), { passive: true });
   registerServiceWorker();
   detectLocationPermission();
   await bootstrapData();

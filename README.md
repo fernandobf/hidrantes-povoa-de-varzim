@@ -1,4 +1,4 @@
-# Hidrantes — Póvoa de Varzim · PWA v2.3
+# Hidrantes — Póvoa de Varzim · PWA v2.4
 
 Versão preparada para publicar diretamente em:
 
@@ -111,3 +111,13 @@ O mapa é uma ferramenta de referência e pré-planeamento. Os dados SIG podem e
 - Removido o clique simples no mapa que definia automaticamente um ponto de ocorrência e podia contrariar pan/duplo clique. A pesquisa continua a definir o ponto de ocorrência.
 - Halo do hidrante mais próximo corrigido para um círculo real de 42 × 42 px; o dourado do “mais próximo” tem precedência sobre o halo de seleção.
 - Favicon do navegador agora usa PNG com transparência real (`favicon_hydrant_32.png` e `favicon_hydrant_64.png`).
+
+
+## v2.4 — interação do mapa
+
+- A caixa **Pesquisa e filtros** passa a ter accordion/recolher, com estado memorizado localmente.
+- O mapa recebe `touch-action: none`, bloqueio de drag nativo das imagens e prevenção específica do gesto de zoom da página em Safari. A pinça fica reservada ao Leaflet.
+- Tiles e sombras ficam sem `pointer-events`; assim o rato/toque é entregue ao mapa em toda a área, não apenas sobre marcadores.
+- Pan com rato usa cursor `grab/grabbing`; duplo clique, roda do rato, pinch zoom e teclado permanecem explicitamente ativos.
+- Os marcadores usam um PNG leve e reutilizado. O halo do hidrante mais próximo/selecionado passou para `L.circleMarker` em Canvas, evitando reconstruir centenas de ícones e reduzindo trabalho de DOM durante pan/zoom.
+- Tile layer configurada para atualizar quando o movimento termina (`updateWhenIdle`) e não redesenhar continuamente durante zoom, priorizando fluidez em telemóveis.
