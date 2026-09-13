@@ -1,4 +1,4 @@
-# Hidrantes — Póvoa de Varzim · PWA v2.5
+# Hidrantes — Póvoa de Varzim · PWA v2.6
 
 Versão preparada para publicar diretamente em:
 
@@ -132,3 +132,14 @@ O mapa é uma ferramenta de referência e pré-planeamento. Os dados SIG podem e
 - O `#map` passou a ser uma área absoluta própria abaixo da barra superior, evitando interferência de padding/layout com o hit area do mapa.
 - Em mobile, `touch-action: none` fica apenas no mapa; a viewport impede que a pinça amplie a página inteira.
 - O Service Worker v2.5 faz navegação network-first com `no-store` e elimina caches antigos da aplicação ao ativar.
+
+
+## v2.6 — interação do mapa e ícones por tipo
+
+- Corrige de forma estrutural o hit-testing do Leaflet: o `leaflet-map-pane` e os panes puramente visuais não capturam eventos; o rato/toque chega diretamente ao contentor do mapa.
+- Marcadores e popups reativam `pointer-events` explicitamente, por isso continuam clicáveis.
+- Tiles do OpenStreetMap são forçados para `draggable=false` e `pointer-events:none`, eliminando o drag nativo de imagens, incluindo no Firefox.
+- Os handlers de `dragging`, roda, duplo clique, pinch/touch, box zoom e teclado são revalidados no início das interações e quando a janela volta a ganhar foco.
+- `MarcoIncendio` usa o hidrante vermelho clássico; `BocaIncendio` usa um ícone próprio de boca/conexão de incêndio, mantendo a mesma paleta e estilo.
+- O popup e o cartão do hidrante mais próximo mostram o ícone correspondente ao tipo.
+- O ícone instalado da PWA passa a ser um símbolo vermelho de download/instalação com seta branca. A identidade visual do site e o favicon continuam como hidrante.

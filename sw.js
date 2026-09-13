@@ -1,11 +1,11 @@
-const VERSION = 'hidrantes-povoa-v2.5.0';
+const VERSION = 'hidrantes-povoa-v2.6.0';
 const APP_CACHE = `${VERSION}-app`;
 const VENDOR_CACHE = `${VERSION}-vendor`;
 const APP_ASSETS = [
   './',
   './index.html',
-  './styles.v2.5.css?v=2.5.0',
-  './app.v2.5.js?v=2.5.0',
+  './styles.v2.6.css?v=2.6.0',
+  './app.v2.6.js?v=2.6.0',
   './manifest.webmanifest',
   './assets/hydrant_map.svg',
   './assets/hydrant_map_52x80.png',
@@ -15,6 +15,14 @@ const APP_ASSETS = [
   './assets/hydrant_app_512.png',
   './assets/favicon_hydrant_32.png',
   './assets/favicon_hydrant_64.png',
+  './assets/marker_marco.svg',
+  './assets/marker_marco_52x80.png',
+  './assets/marker_boca.svg',
+  './assets/marker_boca_52x80.png',
+  './assets/pwa_download.svg',
+  './assets/pwa_download_64.png',
+  './assets/pwa_download_192.png',
+  './assets/pwa_download_512.png',
   './data/hydrants-seed.json'
 ];
 

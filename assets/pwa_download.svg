@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Instalar Hidrantes Póvoa">
+  <defs>
+    <linearGradient id="r" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ef4b47"/>
+      <stop offset="1" stop-color="#b9141a"/>
+    </linearGradient>
+    <filter id="s" x="-30%" y="-30%" width="160%" height="180%">
+      <feDropShadow dx="0" dy="14" stdDeviation="14" flood-color="#741016" flood-opacity=".28"/>
+    </filter>
+  </defs>
+  <rect x="52" y="52" width="408" height="408" rx="96" fill="url(#r)" filter="url(#s)"/>
+  <path d="M256 125v176" fill="none" stroke="#fff" stroke-width="46" stroke-linecap="round"/>
+  <path d="M181 239l75 77 75-77" fill="none" stroke="#fff" stroke-width="46" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M150 327v48c0 17 14 31 31 31h150c17 0 31-14 31-31v-48" fill="none" stroke="#fff" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

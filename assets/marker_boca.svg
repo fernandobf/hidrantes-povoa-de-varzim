@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 96" role="img" aria-label="Boca de incêndio">
+  <defs>
+    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ef4c46"/>
+      <stop offset="1" stop-color="#c61e1e"/>
+    </linearGradient>
+  </defs>
+  <g stroke="#951717" stroke-width="2.4" stroke-linejoin="round">
+    <rect x="13" y="14" width="38" height="49" rx="7" fill="url(#body)"/>
+    <rect x="17" y="18" width="30" height="9" rx="3" fill="#d82525" opacity=".72" stroke="none"/>
+    <circle cx="32" cy="42" r="12" fill="#fbdedb"/>
+    <circle cx="32" cy="42" r="7.4" fill="#d32626"/>
+    <circle cx="32" cy="42" r="3.2" fill="#f8a8a1" stroke="none"/>
+    <path d="M20 69h24v8H20z" fill="#b51c1c"/>
+    <path d="M16 77h32l5 9H11l5-9Z" fill="#cf2222"/>
+    <path d="M19 31v24" stroke="#ffb2ac" stroke-width="2" opacity=".62" stroke-linecap="round"/>
+  </g>
+</svg>
