@@ -57,7 +57,7 @@ button:disabled { opacity: .52; cursor: not-allowed; }
   backdrop-filter: blur(10px);
 }
 .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.brand-icon { width: 36px; height: 36px; object-fit: contain; }
+.brand-icon { width: 40px; height: 40px; object-fit: contain; }
 .brand-title { font-weight: 800; line-height: 1.05; color: var(--navy); }
 .brand-subtitle { color: var(--muted); font-size: .78rem; margin-top: 2px; }
 .top-actions { display: flex; gap: 8px; }
@@ -79,6 +79,9 @@ button:disabled { opacity: .52; cursor: not-allowed; }
 
 .map-shell { position: fixed; inset: 0; padding-top: calc(64px + env(safe-area-inset-top)); }
 #map { width: 100%; height: 100%; background: #dfe7ed; }
+.leaflet-container { cursor: grab; }
+.leaflet-container:active, .leaflet-dragging .leaflet-container { cursor: grabbing; }
+.leaflet-marker-icon, .leaflet-popup-pane button, .leaflet-popup-pane a { cursor: pointer; }
 .leaflet-popup-content-wrapper { border-radius: 14px; box-shadow: var(--shadow); }
 .leaflet-popup-content { margin: 14px 16px; min-width: 230px; }
 .leaflet-popup-content a { color: var(--blue-2); }
@@ -268,10 +271,10 @@ button:disabled { opacity: .52; cursor: not-allowed; }
   height: 42px;
   display: grid;
   place-items: center;
-  border-radius: 50%;
-  background: #fff0f0;
+  border-radius: 14px;
+  background: #eef8ee;
 }
-.nearest-icon { width: 31px; height: 31px; object-fit: contain; }
+.nearest-icon { width: 26px; height: 38px; object-fit: contain; }
 .nearest-copy { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .nearest-label {
   font-size: .72rem;
@@ -326,17 +329,17 @@ button:disabled { opacity: .52; cursor: not-allowed; }
 .hydrant-div-icon { background: transparent !important; border: 0 !important; }
 .hydrant-marker {
   position: relative;
-  width: 34px;
-  height: 38px;
+  width: 30px;
+  height: 44px;
   display: grid;
   place-items: center;
   transition: transform .16s ease, filter .16s ease;
 }
-.hydrant-marker img { width: 31px; height: 35px; object-fit: contain; display: block; filter: drop-shadow(0 2px 2px rgba(0,0,0,.26)); }
+.hydrant-marker img { width: 26px; height: 40px; object-fit: contain; display: block; filter: drop-shadow(0 2px 2px rgba(0,0,0,.24)); }
 .hydrant-marker::before {
   content: "";
   position: absolute;
-  inset: -4px -3px;
+  inset: 1px -4px 8px -4px;
   border-radius: 50%;
   border: 2px solid transparent;
   pointer-events: none;
@@ -390,7 +393,7 @@ button:disabled { opacity: .52; cursor: not-allowed; }
 .reference-pin .ui-icon { width: 36px; height: 42px; stroke-width: 2.2; fill: rgba(255,255,255,.9); }
 
 .popup-title { display: flex; gap: 8px; align-items: center; color: var(--navy); margin-bottom: 8px; }
-.popup-title img { width: 26px; height: 30px; object-fit: contain; }
+.popup-title img { width: 22px; height: 34px; object-fit: contain; }
 .popup-title strong { line-height: 1.18; }
 .popup-list { display: grid; grid-template-columns: max-content 1fr; gap: 5px 9px; font-size: .82rem; margin: 0; }
 .popup-list dt { color: var(--muted); }

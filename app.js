@@ -128,6 +128,31 @@ function mapState(v) {
   return hasValue(v) ? String(v) : 'Não informado';
 }
 
+function mapLifecycle(v) {
+  const n = stripText(v).replaceAll(' ', '');
+  if (!n) return 'Não informado';
+  if (n === 'servico' || n === 'emservico') return 'Em serviço';
+  if (n === 'foraservico') return 'Fora de serviço';
+  return String(v);
+}
+
+function formatSigDate(value) {
+  if (!hasValue(value)) return 'Não informada';
+  let raw = value;
+  if (typeof value === 'string' && /^\d{10,13}$/.test(value.trim())) raw = Number(value);
+  if (typeof raw === 'number' && raw > 0 && raw < 1e12) raw *= 1000;
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return new Intl.DateTimeFormat('pt-PT', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Europe/Lisbon'
+  }).format(d);
+}
+
 function mapHydrantLocation(v) {
   const dict = {
     pavimento: 'Pavimento',
@@ -163,6 +188,9 @@ function normalizeFeature(feature) {
     TipoLabel: mapType(a.Tipo),
     EstadoKey: normalizeStatusKey(statusRaw),
     EstadoLabel: mapState(statusRaw),
+    CicloVidaLabel: mapLifecycle(a.CicloVida),
+    EstadoConservacaoLabel: hasValue(a.EstadoConservacao) ? String(a.EstadoConservacao) : 'Não informado',
+    DataActualizacaoLabel: formatSigDate(a.DataActualizacao),
     LocalizacaoHidranteLabel: mapHydrantLocation(a.LocalizacaoHidrante)
   };
 }
@@ -178,8 +206,9 @@ function dedupePoints(points) {
 
 function searchableText(p) {
   return stripText([
-    p.IDEntidade, p.OBJECTID, p.TipoLabel, p.EstadoLabel, p.Freguesia,
-    p.Arruamento, p.Localizacao, p.Descricao, p.Observacoes
+    p.IDEntidade, p.OBJECTID, p.TipoLabel, p.EstadoLabel, p.CicloVidaLabel,
+    p.EstadoConservacaoLabel, p.Freguesia, p.Arruamento, p.Localizacao,
+    p.Descricao, p.Observacoes
   ].filter(Boolean).join(' '));
 }
 
@@ -294,10 +323,10 @@ function createMarkerIcon(p) {
 
   return L.divIcon({
     className: 'hydrant-div-icon',
-    html: `<div class="${classes.join(' ')}"><img src="./assets/hydrant_red.svg" alt=""></div>`,
-    iconSize: [34, 38],
-    iconAnchor: [17, 34],
-    popupAnchor: [0, -31]
+    html: `<div class="${classes.join(' ')}"><img src="./assets/hydrant_map.svg" alt=""></div>`,
+    iconSize: [30, 44],
+    iconAnchor: [15, 40],
+    popupAnchor: [0, -36]
   });
 }
 
@@ -305,7 +334,9 @@ function dataRowsForPoint(p, includeCoords = true) {
   const rows = [
     ['ID', p.IDEntidade || p.OBJECTID],
     ['Tipo', p.TipoLabel],
-    ['Estado', p.EstadoLabel],
+    ['Estado operacional', p.EstadoLabel],
+    ['Ciclo de vida', p.CicloVidaLabel],
+    ['Estado de conservação', p.EstadoConservacaoLabel],
     ['Freguesia', p.Freguesia],
     ['Arruamento', p.Arruamento],
     ['Localização', p.Localizacao],
@@ -315,16 +346,22 @@ function dataRowsForPoint(p, includeCoords = true) {
     ['Bocas', [p.DNBoca1, p.DNBoca2, p.DNBoca3].filter(hasValue).map(v => `${v} mm`).join(' / ')],
     ['Encaixe', p.TipoEncaixe],
     ['Coluna', p.TipoColuna],
-    ['Conservação', p.EstadoConservacao],
     ['Torneira de corte', p.TorneiraCorte],
     ['Aberta', p.Aberta],
-    ['Ano', p.AnoInstalacao],
+    ['Ano de instalação', p.AnoInstalacao],
+    ['Entrada em serviço', hasValue(p.DataEntradaServico) ? formatSigDate(p.DataEntradaServico) : ''],
     ['Descrição', p.Descricao],
     ['Observações', p.Observacoes],
-    ['Atualização SIG', p.DataActualizacao]
+    ['Última atualização do registo SIG', p.DataActualizacaoLabel]
   ];
   if (includeCoords) rows.push(['Coordenadas', `${p.latitude.toFixed(7)}, ${p.longitude.toFixed(7)}`]);
-  return rows.filter(([, v]) => hasValue(v));
+  const alwaysVisible = new Set([
+    'Estado operacional',
+    'Ciclo de vida',
+    'Estado de conservação',
+    'Última atualização do registo SIG'
+  ]);
+  return rows.filter(([label, value]) => alwaysVisible.has(label) || hasValue(value));
 }
 
 function directionsUrl(p) {
@@ -336,7 +373,7 @@ const externalLinkIcon = '<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="
 function popupHtml(p) {
   const rows = dataRowsForPoint(p).slice(0, 10).map(([k, v]) => `<dt>${escapeHtml(k)}</dt><dd>${escapeHtml(v)}</dd>`).join('');
   return `
-    <div class="popup-title"><img src="./assets/hydrant_red.svg" alt=""><strong>${escapeHtml(p.TipoLabel)}${hasValue(p.IDEntidade) ? ` — ${escapeHtml(p.IDEntidade)}` : ''}</strong></div>
+    <div class="popup-title"><img src="./assets/hydrant_map.svg" alt=""><strong>${escapeHtml(p.TipoLabel)}${hasValue(p.IDEntidade) ? ` — ${escapeHtml(p.IDEntidade)}` : ''}</strong></div>
     <dl class="popup-list">${rows}</dl>
     <div class="popup-actions">
       <button type="button" data-copy-coords="${escapeHtml(getPointId(p))}">Copiar</button>
@@ -354,7 +391,9 @@ function initMap() {
     zoomControl: false,
     preferCanvas: true,
     minZoom: 10,
-    maxZoom: 20
+    maxZoom: 20,
+    dragging: true,
+    tap: false
   }).setView(DEFAULT_CENTER, 13);
 
   L.control.zoom({ position: 'topright' }).addTo(state.map);
@@ -365,6 +404,12 @@ function initMap() {
   }).addTo(state.map);
 
   state.markerLayer = L.layerGroup().addTo(state.map);
+  state.map.on('click', event => {
+    const { lat, lng } = event.latlng || {};
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    setSearchPosition(lat, lng, `Ponto no mapa (${lat.toFixed(5)}, ${lng.toFixed(5)})`);
+    setSearchStatus('Ponto de ocorrência marcado no mapa. O hidrante mais próximo foi recalculado.');
+  });
   state.map.on('popupopen', event => {
     const btn = event.popup.getElement()?.querySelector('[data-copy-coords]');
     if (btn) btn.addEventListener('click', () => {
@@ -462,7 +507,11 @@ function updateStatusFilterUi() {
 
   const current = els.statusFilter.selectedOptions[0];
   if (current?.disabled) els.statusFilter.value = 'all';
-  els.statusNote.hidden = !(state.points.length > 0 && counts.operational === 0 && counts.non_operational === 0);
+  const allUnknown = state.points.length > 0 && counts.operational === 0 && counts.non_operational === 0;
+  els.statusNote.hidden = !allUnknown;
+  if (allUnknown) {
+    els.statusNote.textContent = 'O campo EstadoOperacional não está preenchido nestes registos. O ciclo de vida é mostrado nos detalhes, mas não é usado como substituto da operacionalidade.';
+  }
 }
 
 function applyFilters() {
@@ -483,6 +532,11 @@ function setPoints(points, source, syncAt, { fit = false } = {}) {
   state.points = dedupePoints(points.map(normalizeFeature).filter(Boolean));
   setSourceBadge(source, syncAt);
   renderMarkers({ fit });
+}
+
+function needsSigSchemaRefresh(points = state.points) {
+  if (!points.length) return false;
+  return !points.some(p => Object.prototype.hasOwnProperty.call(p, 'CicloVida'));
 }
 
 async function fetchDirectSig() {
@@ -1022,7 +1076,9 @@ async function bootstrapData() {
     showToast('Não foi possível carregar a base inicial de hidrantes.', 4500);
   }
 
-  if (navigator.onLine) await refreshFromSig({ quiet: true });
+  if (navigator.onLine) {
+    await refreshFromSig({ quiet: true, force: needsSigSchemaRefresh() });
+  }
 }
 
 async function registerServiceWorker() {

@@ -6,6 +6,17 @@ const SIG_QUERY = 'https://sigonline.cm-pvarzim.pt/arcgis/rest/services/Inter_In
 const here = dirname(fileURLToPath(import.meta.url));
 const output = resolve(here, '../data/hydrants-seed.json');
 
+// Campos cuja presença confirma a versão de esquema usada pela PWA v2.2.
+// EstadoOperacional NÃO é inferido a partir de CicloVida, EstadoConservacao ou Enabled.
+const REQUIRED_SIG_FIELDS = [
+  'IDEntidade',
+  'Tipo',
+  'EstadoOperacional',
+  'CicloVida',
+  'EstadoConservacao',
+  'DataActualizacao'
+];
+
 async function fetchAll() {
   const batch = 1000;
   let offset = 0;
@@ -40,6 +51,14 @@ async function fetchAll() {
   return all;
 }
 
+function assertExpectedSchema(features) {
+  const attrs = features[0]?.attributes || {};
+  const missing = REQUIRED_SIG_FIELDS.filter(field => !Object.prototype.hasOwnProperty.call(attrs, field));
+  if (missing.length) {
+    throw new Error(`O esquema do SIG mudou ou veio incompleto. Campos em falta: ${missing.join(', ')}`);
+  }
+}
+
 function flatten(feature) {
   const a = feature?.attributes || {};
   const g = feature?.geometry || {};
@@ -50,13 +69,23 @@ function flatten(feature) {
 }
 
 const raw = await fetchAll();
+if (!raw.length) throw new Error('O SIG não devolveu hidrantes. O ficheiro atual não será substituído.');
+assertExpectedSchema(raw);
+
 const features = raw.map(flatten).filter(Boolean);
 if (!features.length) throw new Error('O SIG não devolveu hidrantes válidos. O ficheiro atual não será substituído.');
 
+const recordUpdateValues = features
+  .map(item => Number(item.DataActualizacao))
+  .filter(value => Number.isFinite(value) && value > 0);
+
 const payload = {
+  schemaVersion: 2,
   source: 'SIG Câmara Municipal da Póvoa de Varzim — camada 218',
   generatedAt: new Date().toISOString(),
+  latestRecordUpdate: recordUpdateValues.length ? Math.max(...recordUpdateValues) : null,
   count: features.length,
+  fieldsIncluded: REQUIRED_SIG_FIELDS,
   features
 };
 

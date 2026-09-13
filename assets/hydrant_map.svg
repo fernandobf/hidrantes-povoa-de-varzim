@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 96" role="img" aria-label="Hidrante">
+  <defs>
+    <linearGradient id="bodyRed" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#ef4c46"/>
+      <stop offset="1" stop-color="#c61e1e"/>
+    </linearGradient>
+    <linearGradient id="capRed" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#ff6a62"/>
+      <stop offset="1" stop-color="#cf2222"/>
+    </linearGradient>
+  </defs>
+  <g fill="none" stroke="#951717" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+    <path fill="url(#capRed)" d="M20 22c0-8.2 5.1-14 12-14s12 5.8 12 14H20Z"/>
+    <rect x="16" y="20" width="32" height="8" rx="2.6" fill="#d62626"/>
+    <rect x="22" y="28" width="20" height="39" rx="5.5" fill="url(#bodyRed)"/>
+    <rect x="7" y="37" width="15" height="14" rx="4.2" fill="#db2a2a"/>
+    <rect x="42" y="37" width="15" height="14" rx="4.2" fill="#db2a2a"/>
+    <circle cx="12" cy="44" r="2.6" fill="#ffb2ac"/>
+    <circle cx="52" cy="44" r="2.6" fill="#ffb2ac"/>
+    <circle cx="32" cy="43" r="6.3" fill="#ffe3e0"/>
+    <path d="M32 39.6v6.8M28.6 43h6.8"/>
+    <rect x="15" y="67" width="34" height="7.5" rx="2.5" fill="#b01c1c"/>
+    <path fill="#d12222" d="M18 74h28l4 10H14l4-10Z"/>
+    <path d="M25.5 32v28" stroke="#ffb4ad" stroke-width="2.1" opacity=".7"/>
+    <path d="M38.5 32v28" stroke="#a51717" stroke-width="2" opacity=".35"/>
+  </g>
+</svg>
