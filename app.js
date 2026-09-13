@@ -1,14 +1,13 @@
 'use strict';
 
 const SIG_QUERY = 'https://sigonline.cm-pvarzim.pt/arcgis/rest/services/Inter_Intra/TEMATICOS_Infraestruturas_RedeAguas/MapServer/218/query';
-const PROXY_QUERY = './api/hydrants';
 const SEED_URL = './data/hydrants-seed.json';
-const REFRESH_INTERVAL_MS = 30 * 60 * 1000;
-const STALE_AFTER_MS = 5 * 60 * 1000;
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const DB_NAME = 'hidrantes-povoa';
 const DB_VERSION = 1;
 const STORE_NAME = 'snapshots';
 const SNAPSHOT_KEY = 'latest';
+const DEFAULT_CENTER = [41.4107, -8.7402];
 
 const state = {
   points: [],
@@ -16,15 +15,19 @@ const state = {
   map: null,
   markerLayer: null,
   markers: new Map(),
+  markersVisible: true,
   userMarker: null,
   accuracyCircle: null,
   userPosition: null,
   watchId: null,
+  locationPermission: 'prompt',
+  searchMarker: null,
+  searchPosition: null,
+  searchLabel: '',
   nearest: null,
   selectedId: null,
   nearestExpanded: false,
   lastSyncAt: null,
-  refreshTimer: null,
   installPrompt: null,
   source: 'seed'
 };
@@ -35,18 +38,23 @@ const els = {
   mapFallback: $('mapFallback'),
   installBtn: $('installBtn'),
   refreshBtn: $('refreshBtn'),
+  searchForm: $('searchForm'),
   searchInput: $('searchInput'),
+  searchBtn: $('searchBtn'),
   clearSearchBtn: $('clearSearchBtn'),
+  searchStatus: $('searchStatus'),
   typeFilter: $('typeFilter'),
   statusFilter: $('statusFilter'),
+  statusNote: $('statusNote'),
   visibleCount: $('visibleCount'),
   sourceBadge: $('sourceBadge'),
   locateBtn: $('locateBtn'),
-  fitBtn: $('fitBtn'),
+  visibilityBtn: $('visibilityBtn'),
   offlineBtn: $('offlineBtn'),
   networkBanner: $('networkBanner'),
   nearestCard: $('nearestCard'),
   nearestToggle: $('nearestToggle'),
+  nearestLabel: $('nearestLabel'),
   nearestHeadline: $('nearestHeadline'),
   nearestSubline: $('nearestSubline'),
   nearestDetails: $('nearestDetails'),
@@ -67,6 +75,15 @@ function hasValue(v) {
   return !['null', 'none', 'nenhum valor', 'não informado', 'nao informado', 'undefined'].includes(s.toLowerCase());
 }
 
+function stripText(value) {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
 function escapeHtml(value) {
   return String(value ?? '')
     .replaceAll('&', '&amp;')
@@ -77,25 +94,48 @@ function escapeHtml(value) {
 }
 
 function mapType(v) {
-  if (v === 'MarcoIncendio') return 'Marco de incêndio';
-  if (v === 'BocaIncendio') return 'Boca de incêndio';
+  const n = stripText(v).replaceAll(' ', '');
+  if (n === 'marcoincendio') return 'Marco de incêndio';
+  if (n === 'bocaincendio') return 'Boca de incêndio';
   return hasValue(v) ? String(v) : 'Hidrante';
 }
 
+function normalizeStatusKey(v) {
+  const n = stripText(v);
+  if (!n) return 'unknown';
+  if (
+    n.includes('nao operacional') ||
+    n.includes('naooperacional') ||
+    n.includes('inoperacional') ||
+    n.includes('fora de servico') ||
+    n.includes('desativado') ||
+    n.includes('avariado')
+  ) return 'non_operational';
+  if (
+    n === 'operacional' ||
+    n === 'operativo' ||
+    n === 'ativo' ||
+    n === 'funcional' ||
+    n === 'em servico'
+  ) return 'operational';
+  return 'unknown';
+}
+
 function mapState(v) {
-  if (v === 'Operacional') return 'Operacional';
-  if (v === 'NaoOperacional') return 'Não operacional';
+  const key = normalizeStatusKey(v);
+  if (key === 'operational') return 'Operacional';
+  if (key === 'non_operational') return 'Não operacional';
   return hasValue(v) ? String(v) : 'Não informado';
 }
 
 function mapHydrantLocation(v) {
   const dict = {
-    Pavimento: 'Pavimento',
-    GuiaPasseio: 'Guia/passeio',
-    Interior: 'Interior',
-    Parede: 'Parede'
+    pavimento: 'Pavimento',
+    guiapasseio: 'Guia/passeio',
+    interior: 'Interior',
+    parede: 'Parede'
   };
-  return dict[v] || (hasValue(v) ? String(v) : '');
+  return dict[stripText(v).replaceAll(' ', '')] || (hasValue(v) ? String(v) : '');
 }
 
 function normalizeFeature(feature) {
@@ -113,6 +153,7 @@ function normalizeFeature(feature) {
 
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
   const id = String(a.IDEntidade ?? a.ID ?? a.OBJECTID ?? `${lat},${lon}`);
+  const statusRaw = a.EstadoOperacional;
 
   return {
     ...a,
@@ -120,7 +161,8 @@ function normalizeFeature(feature) {
     latitude: lat,
     longitude: lon,
     TipoLabel: mapType(a.Tipo),
-    EstadoLabel: mapState(a.EstadoOperacional),
+    EstadoKey: normalizeStatusKey(statusRaw),
+    EstadoLabel: mapState(statusRaw),
     LocalizacaoHidranteLabel: mapHydrantLocation(a.LocalizacaoHidrante)
   };
 }
@@ -135,10 +177,10 @@ function dedupePoints(points) {
 }
 
 function searchableText(p) {
-  return [
+  return stripText([
     p.IDEntidade, p.OBJECTID, p.TipoLabel, p.EstadoLabel, p.Freguesia,
     p.Arruamento, p.Localizacao, p.Descricao, p.Observacoes
-  ].filter(Boolean).join(' ').toLocaleLowerCase('pt-PT');
+  ].filter(Boolean).join(' '));
 }
 
 function getPointId(p) {
@@ -146,13 +188,10 @@ function getPointId(p) {
 }
 
 function isVisibleByFilter(p) {
-  const q = els.searchInput.value.trim().toLocaleLowerCase('pt-PT');
   const type = els.typeFilter.value;
   const status = els.statusFilter.value;
-  if (q && !searchableText(p).includes(q)) return false;
   if (type !== 'all' && p.Tipo !== type) return false;
-  if (status === 'unknown' && hasValue(p.EstadoOperacional)) return false;
-  if (status !== 'all' && status !== 'unknown' && p.EstadoOperacional !== status) return false;
+  if (status !== 'all' && p.EstadoKey !== status) return false;
   return true;
 }
 
@@ -162,22 +201,22 @@ function haversineMeters(a, b) {
   const dLon = (b.lon - a.lon) * Math.PI / 180;
   const lat1 = a.lat * Math.PI / 180;
   const lat2 = b.lat * Math.PI / 180;
-  const h = Math.sin(dLat/2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon/2) ** 2;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
 function bearingDegrees(a, b) {
-  const φ1 = a.lat * Math.PI/180;
-  const φ2 = b.lat * Math.PI/180;
-  const λ1 = a.lon * Math.PI/180;
-  const λ2 = b.lon * Math.PI/180;
-  const y = Math.sin(λ2-λ1) * Math.cos(φ2);
-  const x = Math.cos(φ1)*Math.sin(φ2) - Math.sin(φ1)*Math.cos(φ2)*Math.cos(λ2-λ1);
-  return (Math.atan2(y, x) * 180/Math.PI + 360) % 360;
+  const φ1 = a.lat * Math.PI / 180;
+  const φ2 = b.lat * Math.PI / 180;
+  const λ1 = a.lon * Math.PI / 180;
+  const λ2 = b.lon * Math.PI / 180;
+  const y = Math.sin(λ2 - λ1) * Math.cos(φ2);
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(λ2 - λ1);
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
 }
 
 function compassDirection(deg) {
-  const dirs = ['N','NE','E','SE','S','SO','O','NO'];
+  const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'];
   return dirs[Math.round(deg / 45) % 8];
 }
 
@@ -195,21 +234,52 @@ function formatTimestamp(ts) {
   if (!ts) return '';
   const d = new Date(ts);
   if (Number.isNaN(d.getTime())) return '';
-  return new Intl.DateTimeFormat('pt-PT', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(d);
+  return new Intl.DateTimeFormat('pt-PT', {
+    day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit'
+  }).format(d);
 }
 
-function showToast(message, ms = 2600) {
+function timestampMs(ts) {
+  const value = ts ? new Date(ts).getTime() : NaN;
+  return Number.isFinite(value) ? value : 0;
+}
+
+function showToast(message, ms = 2800) {
   els.toast.textContent = message;
   els.toast.hidden = false;
   clearTimeout(showToast._timer);
   showToast._timer = setTimeout(() => { els.toast.hidden = true; }, ms);
 }
 
+function setSearchStatus(message = '') {
+  els.searchStatus.textContent = message;
+  els.searchStatus.hidden = !message;
+}
+
 function updateOnlineUi() {
   const offline = !navigator.onLine;
   els.networkBanner.hidden = !offline;
-  if (!offline && state.source === 'cache') {
-    els.sourceBadge.textContent = `Cache local • ${formatTimestamp(state.lastSyncAt)}`;
+  els.offlineBtn.classList.toggle('offline', offline);
+  els.offlineBtn.title = offline ? 'Sem rede — ver dados offline' : 'Online — ver opções offline';
+  els.offlineBtn.setAttribute('aria-label', els.offlineBtn.title);
+}
+
+function setLocateState(mode) {
+  els.locateBtn.dataset.locationState = mode;
+  els.locateBtn.classList.toggle('active', mode === 'active');
+  els.locateBtn.classList.toggle('denied', mode === 'denied');
+  if (mode === 'denied') {
+    els.locateBtn.title = 'Localização não autorizada';
+    els.locateBtn.setAttribute('aria-label', 'Localização não autorizada');
+  } else if (mode === 'active') {
+    els.locateBtn.title = 'Localização ativa — centrar no GPS';
+    els.locateBtn.setAttribute('aria-label', 'Localização ativa — centrar no GPS');
+  } else if (mode === 'loading') {
+    els.locateBtn.title = 'A obter localização';
+    els.locateBtn.setAttribute('aria-label', 'A obter localização');
+  } else {
+    els.locateBtn.title = 'Ativar localização';
+    els.locateBtn.setAttribute('aria-label', 'Ativar localização');
   }
 }
 
@@ -220,14 +290,14 @@ function createMarkerIcon(p) {
   if (state.nearest && getPointId(state.nearest.point) === id) classes.push('nearest');
   if (state.nearestExpanded && state.nearest && getPointId(state.nearest.point) === id) classes.push('nearest-active');
   if (state.selectedId === id) classes.push('selected');
-  if (p.EstadoOperacional === 'NaoOperacional') classes.push('non-operational');
+  if (p.EstadoKey === 'non_operational') classes.push('non-operational');
 
   return L.divIcon({
     className: 'hydrant-div-icon',
-    html: `<div class="${classes.join(' ')}"><img src="./assets/hydrant_drop.png" alt=""></div>`,
-    iconSize: [30, 30],
-    iconAnchor: [15, 15],
-    popupAnchor: [0, -16]
+    html: `<div class="${classes.join(' ')}"><img src="./assets/hydrant_red.svg" alt=""></div>`,
+    iconSize: [34, 38],
+    iconAnchor: [17, 34],
+    popupAnchor: [0, -31]
   });
 }
 
@@ -254,21 +324,23 @@ function dataRowsForPoint(p, includeCoords = true) {
     ['Atualização SIG', p.DataActualizacao]
   ];
   if (includeCoords) rows.push(['Coordenadas', `${p.latitude.toFixed(7)}, ${p.longitude.toFixed(7)}`]);
-  return rows.filter(([,v]) => hasValue(v));
+  return rows.filter(([, v]) => hasValue(v));
 }
 
 function directionsUrl(p) {
   return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${p.latitude},${p.longitude}`)}&travelmode=driving`;
 }
 
+const externalLinkIcon = '<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3h7v7M10 14 21 3"/><path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/></svg>';
+
 function popupHtml(p) {
-  const rows = dataRowsForPoint(p).slice(0, 9).map(([k,v]) => `<dt>${escapeHtml(k)}</dt><dd>${escapeHtml(v)}</dd>`).join('');
+  const rows = dataRowsForPoint(p).slice(0, 10).map(([k, v]) => `<dt>${escapeHtml(k)}</dt><dd>${escapeHtml(v)}</dd>`).join('');
   return `
-    <div class="popup-title"><img src="./assets/hydrant_drop.png" alt=""><strong>${escapeHtml(p.TipoLabel)}${hasValue(p.IDEntidade) ? ` — ${escapeHtml(p.IDEntidade)}` : ''}</strong></div>
+    <div class="popup-title"><img src="./assets/hydrant_red.svg" alt=""><strong>${escapeHtml(p.TipoLabel)}${hasValue(p.IDEntidade) ? ` — ${escapeHtml(p.IDEntidade)}` : ''}</strong></div>
     <dl class="popup-list">${rows}</dl>
     <div class="popup-actions">
       <button type="button" data-copy-coords="${escapeHtml(getPointId(p))}">Copiar</button>
-      <a href="${directionsUrl(p)}" target="_blank" rel="noopener">Navegar</a>
+      <a href="${directionsUrl(p)}" target="_blank" rel="noopener">Navegar ${externalLinkIcon}</a>
     </div>`;
 }
 
@@ -279,11 +351,13 @@ function initMap() {
   }
 
   state.map = L.map('map', {
-    zoomControl: true,
+    zoomControl: false,
     preferCanvas: true,
     minZoom: 10,
     maxZoom: 20
-  }).setView([41.4107, -8.7402], 13);
+  }).setView(DEFAULT_CENTER, 13);
+
+  L.control.zoom({ position: 'topright' }).addTo(state.map);
 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
@@ -302,12 +376,15 @@ function initMap() {
 }
 
 function renderMarkers({ fit = false } = {}) {
+  updateStatusFilterUi();
   state.filtered = state.points.filter(isVisibleByFilter);
   els.visibleCount.textContent = `${state.filtered.length} de ${state.points.length}`;
-  if (!state.map || !state.markerLayer) return;
+  if (!state.map || !state.markerLayer) {
+    updateNearest();
+    return;
+  }
 
   const visibleIds = new Set(state.filtered.map(getPointId));
-
   for (const [id, marker] of state.markers) {
     if (!visibleIds.has(id)) {
       state.markerLayer.removeLayer(marker);
@@ -319,7 +396,10 @@ function renderMarkers({ fit = false } = {}) {
     const id = getPointId(p);
     let marker = state.markers.get(id);
     if (!marker) {
-      marker = L.marker([p.latitude, p.longitude], { icon: createMarkerIcon(p), title: `${p.TipoLabel} ${p.IDEntidade || ''}`.trim() });
+      marker = L.marker([p.latitude, p.longitude], {
+        icon: createMarkerIcon(p),
+        title: `${p.TipoLabel} ${p.IDEntidade || ''}`.trim()
+      });
       marker.bindPopup(() => popupHtml(p));
       marker.on('click', () => {
         state.selectedId = id;
@@ -332,6 +412,8 @@ function renderMarkers({ fit = false } = {}) {
     }
   }
 
+  setMarkersVisibility(state.markersVisible, { silent: true });
+  updateNearest();
   if (fit && state.filtered.length) fitPoints(state.filtered);
 }
 
@@ -345,7 +427,42 @@ function refreshMarkerIcons() {
 function fitPoints(points = state.filtered) {
   if (!state.map || !points.length) return;
   const bounds = L.latLngBounds(points.map(p => [p.latitude, p.longitude]));
-  state.map.fitBounds(bounds.pad(.08), { paddingTopLeft: [20, 110], paddingBottomRight: [20, 130], maxZoom: 15 });
+  state.map.fitBounds(bounds.pad(.08), { paddingTopLeft: [20, 150], paddingBottomRight: [90, 150], maxZoom: 15 });
+}
+
+function setMarkersVisibility(visible, { silent = false } = {}) {
+  state.markersVisible = visible;
+  if (state.map && state.markerLayer) {
+    if (visible && !state.map.hasLayer(state.markerLayer)) state.markerLayer.addTo(state.map);
+    if (!visible && state.map.hasLayer(state.markerLayer)) state.map.removeLayer(state.markerLayer);
+  }
+  els.visibilityBtn.classList.toggle('markers-hidden', !visible);
+  els.visibilityBtn.setAttribute('aria-pressed', String(visible));
+  els.visibilityBtn.title = visible ? 'Ocultar hidrantes' : 'Mostrar hidrantes';
+  els.visibilityBtn.setAttribute('aria-label', els.visibilityBtn.title);
+  if (!silent) showToast(visible ? 'Hidrantes visíveis.' : 'Hidrantes ocultos.');
+}
+
+function updateStatusFilterUi() {
+  const counts = { operational: 0, non_operational: 0, unknown: 0 };
+  for (const p of state.points) counts[p.EstadoKey] = (counts[p.EstadoKey] || 0) + 1;
+
+  const labels = {
+    operational: `Operacional (${counts.operational})`,
+    non_operational: `Não operacional (${counts.non_operational})`,
+    unknown: `Estado não informado (${counts.unknown})`
+  };
+
+  for (const [value, label] of Object.entries(labels)) {
+    const option = els.statusFilter.querySelector(`option[value="${value}"]`);
+    if (!option) continue;
+    option.textContent = label;
+    option.disabled = counts[value] === 0;
+  }
+
+  const current = els.statusFilter.selectedOptions[0];
+  if (current?.disabled) els.statusFilter.value = 'all';
+  els.statusNote.hidden = !(state.points.length > 0 && counts.operational === 0 && counts.non_operational === 0);
 }
 
 function applyFilters() {
@@ -358,14 +475,14 @@ function setSourceBadge(source, syncAt) {
   const t = formatTimestamp(state.lastSyncAt);
   if (source === 'sig') els.sourceBadge.textContent = `SIG atualizado${t ? ` • ${t}` : ''}`;
   else if (source === 'cache') els.sourceBadge.textContent = `Cache local${t ? ` • ${t}` : ''}`;
-  else els.sourceBadge.textContent = 'Base local inicial';
+  else if (source === 'seed') els.sourceBadge.textContent = `SIG semanal${t ? ` • ${t}` : ''}`;
+  else els.sourceBadge.textContent = 'Base local';
 }
 
 function setPoints(points, source, syncAt, { fit = false } = {}) {
   state.points = dedupePoints(points.map(normalizeFeature).filter(Boolean));
   setSourceBadge(source, syncAt);
   renderMarkers({ fit });
-  updateNearest();
 }
 
 async function fetchDirectSig() {
@@ -396,31 +513,18 @@ async function fetchDirectSig() {
   return out;
 }
 
-async function fetchProxy() {
-  const response = await fetch(PROXY_QUERY, { cache: 'no-store', headers: { Accept: 'application/json' } });
-  if (!response.ok) throw new Error(`Proxy HTTP ${response.status}`);
-  const ct = response.headers.get('content-type') || '';
-  if (!ct.includes('json')) throw new Error('Proxy sem JSON');
-  const data = await response.json();
-  if (!Array.isArray(data.features)) throw new Error('Resposta do proxy inválida');
-  return data.features;
-}
-
-async function refreshFromSig({ quiet = false } = {}) {
+async function refreshFromSig({ quiet = false, force = false } = {}) {
   if (!navigator.onLine) {
     if (!quiet) showToast('Sem ligação à Internet. A usar os dados guardados.');
     return false;
   }
 
+  if (!force && state.lastSyncAt && Date.now() - timestampMs(state.lastSyncAt) < WEEK_MS) return false;
+
   els.refreshBtn.disabled = true;
-  els.refreshBtn.textContent = '…';
+  els.refreshBtn.classList.add('loading');
   try {
-    let features;
-    try {
-      features = await fetchProxy();
-    } catch (_) {
-      features = await fetchDirectSig();
-    }
+    const features = await fetchDirectSig();
     const points = features.map(normalizeFeature).filter(Boolean);
     if (!points.length) throw new Error('O SIG não devolveu pontos válidos');
     const now = new Date().toISOString();
@@ -430,11 +534,11 @@ async function refreshFromSig({ quiet = false } = {}) {
     return true;
   } catch (err) {
     console.error(err);
-    if (!quiet) showToast('Não foi possível atualizar o SIG. Mantive a última base disponível.', 3800);
+    if (!quiet) showToast('Não foi possível atualizar diretamente o SIG. Mantive a última base disponível.', 4200);
     return false;
   } finally {
     els.refreshBtn.disabled = false;
-    els.refreshBtn.textContent = '↻';
+    els.refreshBtn.classList.remove('loading');
   }
 }
 
@@ -483,21 +587,36 @@ async function loadSnapshot() {
 }
 
 async function loadSeed() {
-  const response = await fetch(SEED_URL, { cache: 'default' });
-  if (!response.ok) throw new Error('Seed indisponível');
+  const response = await fetch(SEED_URL, { cache: 'no-store' });
+  if (!response.ok) throw new Error('Base semanal indisponível');
   return response.json();
 }
 
+function getReferencePosition() {
+  if (state.searchPosition) {
+    return {
+      latitude: state.searchPosition.latitude,
+      longitude: state.searchPosition.longitude,
+      mode: 'search',
+      label: state.searchLabel || 'Local pesquisado'
+    };
+  }
+  if (state.userPosition) return { ...state.userPosition, mode: 'gps', label: 'A sua posição' };
+  return null;
+}
+
 function findNearest() {
-  if (!state.userPosition || !state.points.length) return null;
+  const ref = getReferencePosition();
+  if (!ref || !state.filtered.length) return null;
   let best = null;
-  const origin = { lat: state.userPosition.latitude, lon: state.userPosition.longitude };
-  for (const p of state.points) {
+  const origin = { lat: ref.latitude, lon: ref.longitude };
+  for (const p of state.filtered) {
     const d = haversineMeters(origin, { lat: p.latitude, lon: p.longitude });
     if (!best || d < best.distance) best = { point: p, distance: d };
   }
   if (best) {
     best.bearing = bearingDegrees(origin, { lat: best.point.latitude, lon: best.point.longitude });
+    best.reference = ref;
   }
   return best;
 }
@@ -506,10 +625,21 @@ function updateNearest() {
   const previousId = state.nearest?.point ? getPointId(state.nearest.point) : null;
   state.nearest = findNearest();
   const nextId = state.nearest?.point ? getPointId(state.nearest.point) : null;
+  const ref = getReferencePosition();
+
+  els.nearestLabel.textContent = ref?.mode === 'search' ? 'Mais próximo do local pesquisado' : 'Hidrante mais próximo';
 
   if (!state.nearest) {
-    els.nearestHeadline.textContent = state.userPosition ? 'Nenhum hidrante disponível' : 'Ative o GPS para calcular';
-    els.nearestSubline.textContent = state.userPosition ? 'Verifique os filtros e os dados carregados.' : 'A sua posição é usada apenas no dispositivo.';
+    if (!ref) {
+      els.nearestHeadline.textContent = 'Ative o GPS ou pesquise um local';
+      els.nearestSubline.textContent = 'A posição é usada apenas no dispositivo.';
+    } else if (!state.filtered.length) {
+      els.nearestHeadline.textContent = 'Nenhum hidrante corresponde aos filtros';
+      els.nearestSubline.textContent = 'Altere os filtros para calcular o mais próximo.';
+    } else {
+      els.nearestHeadline.textContent = 'Nenhum hidrante disponível';
+      els.nearestSubline.textContent = 'Verifique os dados carregados.';
+    }
     els.nearestData.innerHTML = '';
     els.navigateNearestBtn.disabled = true;
     els.focusNearestBtn.disabled = true;
@@ -530,13 +660,14 @@ function updateNearest() {
 
 function renderNearestDetails() {
   if (!state.nearest) return;
-  const { point: p, distance, bearing } = state.nearest;
+  const { point: p, distance, bearing, reference } = state.nearest;
   const rows = [
+    ...(reference?.mode === 'search' ? [['Referência', reference.label]] : []),
     ['Distância', `${formatDistance(distance)} em linha reta`],
     ['Direção', `${compassDirection(bearing)} (${Math.round(bearing)}°)`],
     ...dataRowsForPoint(p)
   ];
-  els.nearestData.innerHTML = rows.map(([k,v]) => `<dt>${escapeHtml(k)}</dt><dd>${escapeHtml(v)}</dd>`).join('');
+  els.nearestData.innerHTML = rows.map(([k, v]) => `<dt>${escapeHtml(k)}</dt><dd>${escapeHtml(v)}</dd>`).join('');
 }
 
 function toggleNearest(force) {
@@ -553,6 +684,7 @@ function focusNearest({ openPopup = true } = {}) {
   const p = state.nearest.point;
   const id = getPointId(p);
   state.selectedId = id;
+  if (!state.markersVisible) setMarkersVisibility(true, { silent: true });
   state.map.flyTo([p.latitude, p.longitude], Math.max(state.map.getZoom(), 17), { duration: .55 });
   refreshMarkerIcons();
   if (openPopup) setTimeout(() => state.markers.get(id)?.openPopup(), 500);
@@ -572,15 +704,164 @@ function updateUserMarker(position) {
   if (!state.map || !window.L) return;
   const latlng = [position.latitude, position.longitude];
   if (!state.userMarker) {
-    const icon = L.divIcon({ className: '', html: '<div class="user-dot"></div>', iconSize: [18,18], iconAnchor: [9,9] });
+    const icon = L.divIcon({ className: '', html: '<div class="user-dot"></div>', iconSize: [18, 18], iconAnchor: [9, 9] });
     state.userMarker = L.marker(latlng, { icon, zIndexOffset: 1000 }).addTo(state.map).bindTooltip('A sua posição');
   } else {
     state.userMarker.setLatLng(latlng);
   }
   if (!state.accuracyCircle) {
-    state.accuracyCircle = L.circle(latlng, { radius: Math.max(position.accuracy || 0, 8), className: 'user-accuracy', weight: 1 }).addTo(state.map);
+    state.accuracyCircle = L.circle(latlng, {
+      radius: Math.max(position.accuracy || 0, 8), className: 'user-accuracy', weight: 1
+    }).addTo(state.map);
   } else {
     state.accuracyCircle.setLatLng(latlng).setRadius(Math.max(position.accuracy || 0, 8));
+  }
+}
+
+function clearSearchPosition({ keepInput = false } = {}) {
+  state.searchPosition = null;
+  state.searchLabel = '';
+  if (state.searchMarker && state.map) state.map.removeLayer(state.searchMarker);
+  state.searchMarker = null;
+  if (!keepInput) els.searchInput.value = '';
+  setSearchStatus('');
+  updateNearest();
+}
+
+function setSearchPosition(latitude, longitude, label) {
+  clearSearchPosition({ keepInput: true });
+  state.searchPosition = { latitude, longitude };
+  state.searchLabel = label || 'Local pesquisado';
+
+  if (state.map && window.L) {
+    const html = '<div class="reference-pin"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg></div>';
+    const icon = L.divIcon({ className: 'reference-div-icon', html, iconSize: [36, 42], iconAnchor: [18, 40] });
+    state.searchMarker = L.marker([latitude, longitude], { icon, zIndexOffset: 1200 })
+      .addTo(state.map)
+      .bindTooltip(`Local pesquisado: ${label}`, { direction: 'top' });
+  }
+
+  updateNearest();
+  if (state.map) {
+    const nearestPoint = state.nearest?.point;
+    if (nearestPoint) {
+      const bounds = L.latLngBounds([
+        [latitude, longitude],
+        [nearestPoint.latitude, nearestPoint.longitude]
+      ]);
+      state.map.fitBounds(bounds.pad(.55), { paddingTopLeft: [30, 180], paddingBottomRight: [90, 170], maxZoom: 17 });
+    } else {
+      state.map.flyTo([latitude, longitude], 16, { duration: .55 });
+    }
+  }
+}
+
+function parseCoordinates(query) {
+  const match = query.trim().match(/^\s*(-?\d{1,2}(?:[.,]\d+)?)\s*[,; ]\s*(-?\d{1,3}(?:[.,]\d+)?)\s*$/);
+  if (!match) return null;
+  const lat = Number(match[1].replace(',', '.'));
+  const lon = Number(match[2].replace(',', '.'));
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+  return { latitude: lat, longitude: lon };
+}
+
+function findExactHydrant(query) {
+  const q = stripText(query).replaceAll(' ', '');
+  if (!q) return null;
+  return state.points.find(p => {
+    const ids = [p.IDEntidade, p.id, p.OBJECTID].filter(hasValue).map(v => stripText(v).replaceAll(' ', ''));
+    return ids.includes(q);
+  }) || null;
+}
+
+function geocodeViewbox() {
+  if (!state.points.length) return '-8.83,41.49,-8.57,41.34';
+  const lats = state.points.map(p => p.latitude);
+  const lons = state.points.map(p => p.longitude);
+  const padLat = .025;
+  const padLon = .035;
+  const minLat = Math.min(...lats) - padLat;
+  const maxLat = Math.max(...lats) + padLat;
+  const minLon = Math.min(...lons) - padLon;
+  const maxLon = Math.max(...lons) + padLon;
+  return `${minLon},${maxLat},${maxLon},${minLat}`;
+}
+
+async function geocodeLocation(query) {
+  const params = new URLSearchParams({
+    format: 'jsonv2',
+    q: `${query}, Póvoa de Varzim, Portugal`,
+    countrycodes: 'pt',
+    limit: '5',
+    bounded: '1',
+    viewbox: geocodeViewbox(),
+    addressdetails: '1',
+    'accept-language': 'pt-PT'
+  });
+  const response = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, {
+    headers: { Accept: 'application/json' }
+  });
+  if (!response.ok) throw new Error(`Geocodificação HTTP ${response.status}`);
+  const results = await response.json();
+  const item = Array.isArray(results) ? results[0] : null;
+  if (!item) return null;
+  const latitude = Number(item.lat);
+  const longitude = Number(item.lon);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+  const label = item.display_name || query;
+  return { latitude, longitude, label };
+}
+
+async function runSearch() {
+  const query = els.searchInput.value.trim();
+  if (!query) {
+    clearSearchPosition();
+    els.searchInput.focus();
+    return;
+  }
+
+  const exact = findExactHydrant(query);
+  if (exact) {
+    clearSearchPosition({ keepInput: true });
+    els.typeFilter.value = 'all';
+    els.statusFilter.value = 'all';
+    renderMarkers();
+    state.selectedId = getPointId(exact);
+    if (!state.markersVisible) setMarkersVisibility(true, { silent: true });
+    refreshMarkerIcons();
+    state.map?.flyTo([exact.latitude, exact.longitude], 18, { duration: .55 });
+    setTimeout(() => state.markers.get(getPointId(exact))?.openPopup(), 500);
+    setSearchStatus(`Hidrante ${exact.IDEntidade || exact.OBJECTID} localizado.`);
+    return;
+  }
+
+  const coords = parseCoordinates(query);
+  if (coords) {
+    setSearchPosition(coords.latitude, coords.longitude, `Coordenadas ${coords.latitude.toFixed(5)}, ${coords.longitude.toFixed(5)}`);
+    setSearchStatus('Ponto de ocorrência definido pelas coordenadas. O hidrante mais próximo foi recalculado.');
+    return;
+  }
+
+  if (!navigator.onLine) {
+    showToast('A pesquisa por endereço precisa de Internet. Pode pesquisar um ID ou introduzir coordenadas.', 4300);
+    return;
+  }
+
+  els.searchBtn.disabled = true;
+  setSearchStatus('A localizar…');
+  try {
+    const result = await geocodeLocation(query);
+    if (!result) {
+      setSearchStatus('Local não encontrado na área da Póvoa de Varzim. Tente indicar rua e freguesia.');
+      return;
+    }
+    setSearchPosition(result.latitude, result.longitude, result.label);
+    setSearchStatus('Local de ocorrência definido. Os hidrantes permanecem visíveis e o mais próximo foi recalculado.');
+  } catch (err) {
+    console.error(err);
+    setSearchStatus('Não foi possível pesquisar o endereço agora. Pode usar coordenadas ou um ID de hidrante.');
+  } finally {
+    els.searchBtn.disabled = false;
   }
 }
 
@@ -589,13 +870,17 @@ function startGps() {
     showToast('Este dispositivo/navegador não disponibiliza geolocalização.');
     return;
   }
+
   if (state.watchId !== null) {
-    els.locateBtn.classList.add('active');
+    setLocateState('active');
+    clearSearchPosition({ keepInput: false });
     if (state.userPosition && state.map) state.map.flyTo([state.userPosition.latitude, state.userPosition.longitude], 16);
+    updateNearest();
     return;
   }
 
-  els.locateBtn.textContent = '…';
+  setLocateState('loading');
+  clearSearchPosition({ keepInput: false });
   state.watchId = navigator.geolocation.watchPosition(
     pos => {
       state.userPosition = {
@@ -604,10 +889,10 @@ function startGps() {
         accuracy: pos.coords.accuracy,
         timestamp: pos.timestamp
       };
+      state.locationPermission = 'granted';
       updateUserMarker(state.userPosition);
       updateNearest();
-      els.locateBtn.textContent = '◎';
-      els.locateBtn.classList.add('active');
+      setLocateState('active');
       if (!startGps._centered && state.map) {
         startGps._centered = true;
         state.map.flyTo([state.userPosition.latitude, state.userPosition.longitude], 16, { duration: .6 });
@@ -615,9 +900,9 @@ function startGps() {
     },
     err => {
       console.warn(err);
-      els.locateBtn.textContent = '◎';
-      els.locateBtn.classList.remove('active');
-      if (err.code === 1) showToast('Permissão de localização recusada. Pode ativá-la nas definições do navegador.', 4200);
+      state.locationPermission = err.code === 1 ? 'denied' : 'prompt';
+      setLocateState(err.code === 1 ? 'denied' : 'ready');
+      if (err.code === 1) showToast('Permissão de localização recusada. Pode ativá-la nas definições do navegador.', 4400);
       else showToast('Não foi possível obter a localização GPS.', 3400);
       if (state.watchId !== null) {
         navigator.geolocation.clearWatch(state.watchId);
@@ -626,6 +911,21 @@ function startGps() {
     },
     { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
   );
+}
+
+async function detectLocationPermission() {
+  if (!navigator.permissions?.query) return;
+  try {
+    const permission = await navigator.permissions.query({ name: 'geolocation' });
+    state.locationPermission = permission.state;
+    if (permission.state === 'denied') setLocateState('denied');
+    permission.addEventListener('change', () => {
+      state.locationPermission = permission.state;
+      if (permission.state === 'denied') setLocateState('denied');
+      else if (state.watchId !== null) setLocateState('active');
+      else setLocateState('ready');
+    });
+  } catch (_) {}
 }
 
 async function prepareOffline() {
@@ -638,7 +938,7 @@ async function prepareOffline() {
       try { await navigator.storage.persist(); } catch (_) {}
     }
     if ('serviceWorker' in navigator) await navigator.serviceWorker.ready;
-    showToast('Aplicação e dados dos hidrantes preparados para uso offline.');
+    showToast('Aplicação e lista de hidrantes guardadas para uso offline.');
   } finally {
     els.prepareOfflineBtn.disabled = false;
   }
@@ -665,13 +965,19 @@ function setupInstallPrompt() {
 }
 
 function bindUi() {
-  els.searchInput.addEventListener('input', applyFilters);
-  els.clearSearchBtn.addEventListener('click', () => { els.searchInput.value = ''; applyFilters(); els.searchInput.focus(); });
+  els.searchForm.addEventListener('submit', event => {
+    event.preventDefault();
+    runSearch();
+  });
+  els.clearSearchBtn.addEventListener('click', () => {
+    clearSearchPosition();
+    els.searchInput.focus();
+  });
   els.typeFilter.addEventListener('change', applyFilters);
   els.statusFilter.addEventListener('change', applyFilters);
-  els.refreshBtn.addEventListener('click', () => refreshFromSig());
+  els.refreshBtn.addEventListener('click', () => refreshFromSig({ force: true }));
   els.locateBtn.addEventListener('click', startGps);
-  els.fitBtn.addEventListener('click', () => fitPoints());
+  els.visibilityBtn.addEventListener('click', () => setMarkersVisibility(!state.markersVisible));
   els.offlineBtn.addEventListener('click', () => els.infoDialog.showModal());
   els.prepareOfflineBtn.addEventListener('click', prepareOffline);
   els.nearestToggle.addEventListener('click', () => toggleNearest());
@@ -680,40 +986,43 @@ function bindUi() {
     if (!state.nearest) return;
     window.open(directionsUrl(state.nearest.point), '_blank', 'noopener');
   });
-  els.copyNearestBtn.addEventListener('click', () => { if (state.nearest) copyCoordinates(state.nearest.point); });
-  window.addEventListener('online', () => { updateOnlineUi(); refreshFromSig({ quiet: true }); });
+  els.copyNearestBtn.addEventListener('click', () => {
+    if (state.nearest) copyCoordinates(state.nearest.point);
+  });
+  window.addEventListener('online', () => {
+    updateOnlineUi();
+    refreshFromSig({ quiet: true });
+  });
   window.addEventListener('offline', updateOnlineUi);
 }
 
 async function bootstrapData() {
-  let loaded = false;
-  const cached = await loadSnapshot();
-  if (cached?.features?.length) {
-    setPoints(cached.features, 'cache', cached.fetchedAt, { fit: true });
-    loaded = true;
-  }
+  const [cached, seedResult] = await Promise.all([
+    loadSnapshot(),
+    loadSeed().catch(err => {
+      console.warn(err);
+      return null;
+    })
+  ]);
 
-  if (!loaded) {
-    try {
-      const seed = await loadSeed();
-      if (seed?.features?.length) {
-        setPoints(seed.features, 'seed', seed.generatedAt, { fit: true });
-        loaded = true;
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  }
+  const seedAt = seedResult?.generatedAt || seedResult?.fetchedAt;
+  const cacheAt = cached?.fetchedAt;
+  const seedValid = seedResult?.features?.length;
+  const cacheValid = cached?.features?.length;
 
-  if (!loaded) {
+  if (seedValid && (!cacheValid || timestampMs(seedAt) >= timestampMs(cacheAt))) {
+    setPoints(seedResult.features, 'seed', seedAt, { fit: true });
+    await saveSnapshot({ features: state.points, fetchedAt: seedAt || new Date().toISOString() });
+  } else if (cacheValid) {
+    setPoints(cached.features, 'cache', cacheAt, { fit: true });
+  } else if (seedValid) {
+    setPoints(seedResult.features, 'seed', seedAt, { fit: true });
+  } else {
     els.sourceBadge.textContent = 'Sem dados';
     showToast('Não foi possível carregar a base inicial de hidrantes.', 4500);
   }
 
-  if (navigator.onLine) {
-    const isStale = !cached?.fetchedAt || (Date.now() - new Date(cached.fetchedAt).getTime()) > STALE_AFTER_MS;
-    if (isStale) refreshFromSig({ quiet: true });
-  }
+  if (navigator.onLine) await refreshFromSig({ quiet: true });
 }
 
 async function registerServiceWorker() {
@@ -729,13 +1038,11 @@ async function init() {
   bindUi();
   setupInstallPrompt();
   updateOnlineUi();
+  setLocateState('ready');
   initMap();
   registerServiceWorker();
+  detectLocationPermission();
   await bootstrapData();
-
-  state.refreshTimer = setInterval(() => {
-    if (navigator.onLine) refreshFromSig({ quiet: true });
-  }, REFRESH_INTERVAL_MS);
 }
 
 document.addEventListener('DOMContentLoaded', init);

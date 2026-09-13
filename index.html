@@ -4,11 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0d3d66">
-  <meta name="description" content="Mapa PWA de hidrantes da Póvoa de Varzim com dados do SIG municipal, GPS e hidrante mais próximo.">
+  <meta name="description" content="Mapa PWA de hidrantes da Póvoa de Varzim com dados do SIG municipal, pesquisa de local de ocorrência, GPS e hidrante mais próximo.">
   <title>Hidrantes — Póvoa de Varzim</title>
   <link rel="manifest" href="./manifest.webmanifest">
-  <link rel="icon" href="./assets/hydrant_drop.png" type="image/png">
-  <link rel="apple-touch-icon" href="./assets/hydrant_drop_192.png">
+  <link rel="icon" href="./assets/hydrant_red_64.png" type="image/png">
+  <link rel="apple-touch-icon" href="./assets/hydrant_red_192.png">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="./styles.css">
 </head>
@@ -16,7 +16,7 @@
   <div id="app">
     <header class="topbar">
       <div class="brand">
-        <img src="./assets/hydrant_drop.png" alt="" class="brand-icon">
+        <img src="./assets/hydrant_red.svg" alt="" class="brand-icon">
         <div>
           <div class="brand-title">Hidrantes</div>
           <div class="brand-subtitle">Póvoa de Varzim</div>
@@ -24,8 +24,12 @@
       </div>
 
       <div class="top-actions">
-        <button id="installBtn" class="icon-btn" type="button" title="Instalar aplicação" hidden aria-label="Instalar aplicação">＋</button>
-        <button id="refreshBtn" class="icon-btn" type="button" title="Atualizar dados do SIG" aria-label="Atualizar dados do SIG">↻</button>
+        <button id="installBtn" class="icon-btn" type="button" title="Instalar aplicação" hidden aria-label="Instalar aplicação">
+          <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 16v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3"/></svg>
+        </button>
+        <button id="refreshBtn" class="icon-btn" type="button" title="Atualizar dados do SIG" aria-label="Atualizar dados do SIG">
+          <svg class="ui-icon refresh-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6v5h-5M4 18v-5h5"/><path d="M6.1 9a7 7 0 0 1 11.3-2.6L20 9M4 15l2.6 2.6A7 7 0 0 0 17.9 15"/></svg>
+        </button>
       </div>
     </header>
 
@@ -33,14 +37,21 @@
       <div id="map" aria-label="Mapa dos hidrantes"></div>
       <div id="mapFallback" class="map-fallback" hidden>
         <strong>Mapa indisponível</strong>
-        <span>Os dados dos hidrantes continuam disponíveis. Confirma a ligação à Internet e recarrega a página.</span>
+        <span>Os dados dos hidrantes continuam disponíveis. Confirme a ligação à Internet e recarregue a página.</span>
       </div>
 
       <section class="toolbar" aria-label="Pesquisa e filtros">
-        <div class="search-row">
-          <input id="searchInput" type="search" placeholder="Rua, freguesia ou ID…" autocomplete="off">
-          <button id="clearSearchBtn" type="button" class="mini-btn" title="Limpar pesquisa" aria-label="Limpar pesquisa">×</button>
-        </div>
+        <form id="searchForm" class="search-row" role="search">
+          <input id="searchInput" type="search" placeholder="Rua, local, freguesia, ID ou coordenadas…" autocomplete="off" enterkeyhint="search" aria-label="Pesquisar local de ocorrência ou hidrante">
+          <button id="searchBtn" type="submit" class="mini-btn" title="Pesquisar" aria-label="Pesquisar">
+            <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          </button>
+          <button id="clearSearchBtn" type="button" class="mini-btn" title="Limpar pesquisa" aria-label="Limpar pesquisa">
+            <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+        </form>
+        <div id="searchStatus" class="search-status" hidden></div>
+
         <div class="filter-row">
           <select id="typeFilter" aria-label="Filtrar por tipo">
             <option value="all">Todos os tipos</option>
@@ -49,11 +60,12 @@
           </select>
           <select id="statusFilter" aria-label="Filtrar por estado">
             <option value="all">Todos os estados</option>
-            <option value="Operacional">Operacional</option>
-            <option value="NaoOperacional">Não operacional</option>
+            <option value="operational">Operacional</option>
+            <option value="non_operational">Não operacional</option>
             <option value="unknown">Estado não informado</option>
           </select>
         </div>
+        <div id="statusNote" class="status-note" hidden>O SIG atual não informa o estado operacional destes hidrantes.</div>
         <div class="toolbar-meta">
           <span id="visibleCount">—</span>
           <span aria-hidden="true">•</span>
@@ -62,33 +74,48 @@
       </section>
 
       <div class="map-buttons" aria-label="Controlos rápidos">
-        <button id="locateBtn" type="button" class="map-btn primary-map-btn" title="Ativar GPS" aria-label="Ativar GPS">◎</button>
-        <button id="fitBtn" type="button" class="map-btn" title="Mostrar todos os hidrantes" aria-label="Mostrar todos os hidrantes">⌗</button>
-        <button id="offlineBtn" type="button" class="map-btn" title="Informação sobre modo offline" aria-label="Informação sobre modo offline">⇩</button>
+        <button id="locateBtn" type="button" class="map-btn primary-map-btn" title="Ativar localização" aria-label="Ativar localização" data-location-state="ready">
+          <svg class="ui-icon location-ready" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg>
+          <svg class="ui-icon location-denied" viewBox="0 0 24 24" aria-hidden="true"><path d="M17.8 17.8C15.4 20 12 22 12 22s-8-6-8-12a8 8 0 0 1 1.2-4.2M8.2 3A8 8 0 0 1 20 10c0 1.3-.5 2.7-1.2 4"/><circle cx="12" cy="10" r="2.5"/><path d="M3 3l18 18"/></svg>
+          <span class="button-spinner" aria-hidden="true"></span>
+        </button>
+
+        <button id="visibilityBtn" type="button" class="map-btn" title="Ocultar hidrantes" aria-label="Ocultar hidrantes" aria-pressed="true">
+          <svg class="ui-icon eye-on" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/></svg>
+          <svg class="ui-icon eye-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18M10.6 6.1A10.4 10.4 0 0 1 12 6c6 0 9.5 6 9.5 6a16 16 0 0 1-2.4 3.1M6.2 6.2C3.8 8 2.5 12 2.5 12s3.5 6 9.5 6a10 10 0 0 0 4-.8M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>
+        </button>
+
+        <button id="offlineBtn" type="button" class="map-btn" title="Offline e dados guardados" aria-label="Offline e dados guardados">
+          <svg class="ui-icon wifi-on" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.6a10.5 10.5 0 0 1 14 0M8.5 16a5.5 5.5 0 0 1 7 0M12 20h.01M2 9a15.5 15.5 0 0 1 20 0"/></svg>
+          <svg class="ui-icon wifi-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18M8.8 8.2A15.5 15.5 0 0 1 22 9M2 9a15.7 15.7 0 0 1 3.2-1.9M5 12.6a10.5 10.5 0 0 1 8.4-2.4M16 13.4a10.5 10.5 0 0 1 3 1.2M8.5 16a5.5 5.5 0 0 1 5.3-.8M12 20h.01"/></svg>
+        </button>
       </div>
 
       <div id="networkBanner" class="network-banner" hidden>
-        Sem ligação: hidrantes guardados e GPS continuam disponíveis; o fundo do mapa pode ficar indisponível nesta v1.
+        Sem ligação: a lista de hidrantes e o GPS continuam disponíveis. O fundo do mapa pode não estar disponível.
       </div>
 
       <section id="nearestCard" class="nearest-card" aria-live="polite">
         <button id="nearestToggle" class="nearest-summary" type="button" aria-expanded="false" aria-controls="nearestDetails">
-          <span class="nearest-icon-wrap"><img src="./assets/hydrant_drop.png" alt="" class="nearest-icon"></span>
+          <span class="nearest-icon-wrap"><img src="./assets/hydrant_red.svg" alt="" class="nearest-icon"></span>
           <span class="nearest-copy">
-            <span class="nearest-label">Hidrante mais próximo</span>
-            <strong id="nearestHeadline">Ative o GPS para calcular</strong>
-            <span id="nearestSubline" class="nearest-subline">A sua posição é usada apenas no dispositivo.</span>
+            <span id="nearestLabel" class="nearest-label">Hidrante mais próximo</span>
+            <strong id="nearestHeadline">Ative o GPS ou pesquise um local</strong>
+            <span id="nearestSubline" class="nearest-subline">A posição é usada apenas no dispositivo.</span>
           </span>
-          <span id="nearestChevron" class="chevron" aria-hidden="true">⌃</span>
+          <svg id="nearestChevron" class="ui-icon chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
         </button>
         <div id="nearestDetails" class="nearest-details" hidden>
           <dl id="nearestData" class="detail-grid"></dl>
           <div class="nearest-actions">
             <button id="focusNearestBtn" type="button">Ver no mapa</button>
-            <button id="navigateNearestBtn" type="button" class="accent">Navegar</button>
+            <button id="navigateNearestBtn" type="button" class="accent">
+              Navegar
+              <svg class="ui-icon inline-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3h7v7M10 14 21 3"/><path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/></svg>
+            </button>
             <button id="copyNearestBtn" type="button">Copiar coordenadas</button>
           </div>
-          <p class="microcopy">A distância apresentada é em linha reta a partir do GPS. “Navegar” abre o Google Maps para obter percurso e tempo estimado.</p>
+          <p class="microcopy">A distância é calculada em linha reta. “Navegar” abre o Google Maps para obter o percurso rodoviário e o tempo estimado.</p>
         </div>
       </section>
     </main>
@@ -96,12 +123,15 @@
     <dialog id="infoDialog" class="info-dialog">
       <form method="dialog">
         <div class="dialog-head">
-          <strong>Uso offline nesta versão</strong>
-          <button value="close" class="dialog-close" aria-label="Fechar">×</button>
+          <strong>Uso offline e GPS</strong>
+          <button value="close" class="dialog-close" aria-label="Fechar">
+            <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
         </div>
-        <p><strong>Já fica guardado:</strong> a aplicação e a última lista de hidrantes descarregada do SIG. O GPS continua a funcionar sem dados móveis.</p>
-        <p><strong>Ainda não fica garantido:</strong> o fundo cartográfico completo da Póvoa de Varzim. Nesta v1 não fazemos download massivo de tiles públicos.</p>
-        <p>A próxima evolução pode usar um pacote cartográfico próprio da Póvoa de Varzim (PMTiles), permitindo mapa base realmente offline.</p>
+        <p><strong>Esta PWA guarda:</strong> a aplicação e a última lista de hidrantes disponível. O GPS do dispositivo continua a funcionar sem dados móveis.</p>
+        <p><strong>Mapa base:</strong> nesta versão o fundo cartográfico OpenStreetMap não é descarregado em massa, por isso não é garantido offline.</p>
+        <p><strong>Para navegação rodoviária sem rede:</strong> pode descarregar previamente a área da Póvoa de Varzim no Google Maps. Esse download serve o Google Maps e não transfere o mapa base para esta PWA.</p>
+        <p>Os dados do SIG são atualizados automaticamente, no máximo uma vez por semana. No repositório GitHub, a Action incluída também atualiza a base pública semanalmente.</p>
         <div class="dialog-actions">
           <button id="prepareOfflineBtn" value="noop" type="button" class="accent">Guardar dados agora</button>
           <button value="close">Fechar</button>
@@ -112,7 +142,7 @@
     <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
     <footer class="source-footer">
-      Fonte dos hidrantes: SIG da Câmara Municipal da Póvoa de Varzim. Os dados podem estar incompletos ou desatualizados e não garantem a operacionalidade/pressão no local.
+      Fonte: SIG da Câmara Municipal da Póvoa de Varzim. Os dados podem estar incompletos ou desatualizados e não garantem pressão, caudal, acessibilidade ou operacionalidade no local.
     </footer>
   </div>
 

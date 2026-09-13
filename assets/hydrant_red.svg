@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 72" role="img" aria-label="Hidrante">
+  <g fill="#d62f2f" stroke="#8f1d1d" stroke-width="2.2" stroke-linejoin="round">
+    <path d="M21 20c0-7.2 4.9-12 11-12s11 4.8 11 12H21z"/>
+    <rect x="17" y="18" width="30" height="7" rx="2"/>
+    <rect x="22" y="23" width="20" height="35" rx="4"/>
+    <rect x="8" y="31" width="14" height="12" rx="3"/>
+    <rect x="42" y="31" width="14" height="12" rx="3"/>
+    <rect x="5" y="34" width="6" height="6" rx="1.5"/>
+    <rect x="53" y="34" width="6" height="6" rx="1.5"/>
+    <rect x="16" y="56" width="32" height="7" rx="2"/>
+  </g>
+  <path d="M27 28v22" stroke="#f7aaaa" stroke-width="2" stroke-linecap="round" opacity=".65"/>
+  <circle cx="32" cy="37" r="4.8" fill="#f6d3d3" stroke="#8f1d1d" stroke-width="2"/>
+  <path d="M32 34.5v5M29.5 37h5" stroke="#8f1d1d" stroke-width="1.8" stroke-linecap="round"/>
+</svg>
